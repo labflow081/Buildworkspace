@@ -14,10 +14,12 @@ const TaskRow = ({
   task,
   assigneeName,
   onToggle,
+  onDelete,
 }: {
   task: Task
   assigneeName: string
   onToggle: (id: string, done: boolean) => void
+  onDelete: (id: string) => void
 }) => {
   const [animating, setAnimating] = useState(false)
 
@@ -30,15 +32,23 @@ const TaskRow = ({
     }, 150)
   }
 
+  const handleDelete = () => {
+    if (window.confirm('Eliminare questa task?')) {
+      onDelete(task.id)
+      playSound('navigate')
+    }
+  }
+
   return (
     <div
-      className="flex items-start gap-3 py-2 px-3"
+      className="flex items-start gap-2 px-3"
       style={{
         borderBottom: '1px solid #d0cdc5',
         opacity: animating ? 0.5 : 1,
         transition: 'opacity 0.15s',
         minHeight: 44,
         background: task.done ? 'rgba(0,0,0,0.02)' : 'transparent',
+        paddingTop: 6, paddingBottom: 6,
       }}
     >
       <input
@@ -49,18 +59,14 @@ const TaskRow = ({
       />
       <div className="flex-1 min-w-0">
         <p style={{
-          fontSize: 12,
-          color: task.done ? '#999' : '#1A1828',
+          fontSize: 12, color: task.done ? '#999' : '#1A1828',
           textDecoration: task.done ? 'line-through' : 'none',
-          wordBreak: 'break-word',
-          margin: 0,
+          wordBreak: 'break-word', margin: 0,
         }}>
           {task.text}
         </p>
         <div className="flex items-center gap-2 mt-1 flex-wrap">
-          {assigneeName && (
-            <span style={{ fontSize: 10, color: '#666' }}>👤 {assigneeName}</span>
-          )}
+          {assigneeName && <span style={{ fontSize: 10, color: '#666' }}>👤 {assigneeName}</span>}
           {task.due_date && (
             <span style={{ fontSize: 10, color: '#666' }}>
               📅 {new Date(task.due_date).toLocaleDateString('it-IT')}
@@ -68,13 +74,43 @@ const TaskRow = ({
           )}
         </div>
       </div>
+
+      {/* Tasto elimina */}
+      <button
+        onClick={handleDelete}
+        title="Elimina task"
+        style={{
+          width: 22, height: 22,
+          borderRadius: 3,
+          border: '1px solid #ccc',
+          background: 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)',
+          color: '#999',
+          fontSize: 11, fontWeight: 700,
+          cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+          marginTop: 1,
+        }}
+        onMouseOver={e => {
+          (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #E84444 0%, #B81818 100%)'
+          ;(e.currentTarget as HTMLElement).style.color = 'white'
+          ;(e.currentTarget as HTMLElement).style.borderColor = '#900'
+        }}
+        onMouseOut={e => {
+          (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)'
+          ;(e.currentTarget as HTMLElement).style.color = '#999'
+          ;(e.currentTarget as HTMLElement).style.borderColor = '#ccc'
+        }}
+      >
+        ✕
+      </button>
     </div>
   )
 }
 
 export const TasksPage = ({ projectId }: Props) => {
   const { user } = useAuth()
-  const { tasks, loading, createTask, toggleDone } = useTasks(projectId)
+  const { tasks, loading, createTask, toggleDone, deleteTask } = useTasks(projectId)
   const { profiles } = useProfiles()
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -96,45 +132,35 @@ export const TasksPage = ({ projectId }: Props) => {
     return <div style={{ padding: 16, fontSize: 12, color: '#666' }}>Caricamento task...</div>
   }
 
+  const SectionHeader = ({ label }: { label: string }) => (
+    <div style={{
+      fontSize: 10, fontWeight: 700, color: '#666',
+      padding: '6px 12px 2px', textTransform: 'uppercase',
+      borderBottom: '1px solid #ccc', background: '#EAE7D8',
+    }}>
+      {label}
+    </div>
+  )
+
   return (
     <div className="flex flex-col h-full relative">
       <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 64 }}>
-        {/* Da fare */}
         {todo.length > 0 && (
           <div>
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: '#666',
-              padding: '6px 12px 2px',
-              textTransform: 'uppercase',
-              borderBottom: '1px solid #ccc',
-              background: '#EAE7D8',
-            }}>
-              Da fare ({todo.length})
-            </div>
+            <SectionHeader label={`Da fare (${todo.length})`} />
             {todo.map(t => (
-              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} />
+              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} onDelete={deleteTask} />
             ))}
           </div>
         )}
-
-        {/* Fatte */}
         {done.length > 0 && (
           <div>
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: '#999',
-              padding: '6px 12px 2px',
-              textTransform: 'uppercase',
-              borderBottom: '1px solid #ccc',
-              background: '#EAE7D8',
-            }}>
-              Fatte ({done.length})
-            </div>
+            <SectionHeader label={`Fatte (${done.length})`} />
             {done.map(t => (
-              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} />
+              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} onDelete={deleteTask} />
             ))}
           </div>
         )}
-
         {tasks.length === 0 && (
           <div style={{ padding: 24, textAlign: 'center', color: '#999', fontSize: 12 }}>
             Nessuna task. Aggiungine una!
@@ -147,14 +173,10 @@ export const TasksPage = ({ projectId }: Props) => {
         onClick={() => setDialogOpen(true)}
         style={{
           position: 'absolute', bottom: 16, right: 16,
-          width: 48, height: 48,
-          borderRadius: '50%',
+          width: 48, height: 48, borderRadius: '50%',
           background: 'linear-gradient(180deg, #2A5BA5 0%, #1E4380 100%)',
-          border: '2px solid #1E4380',
-          color: 'white',
-          fontSize: 24,
-          cursor: 'pointer',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          border: '2px solid #1E4380', color: 'white', fontSize: 24,
+          cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
         aria-label="Nuova task"

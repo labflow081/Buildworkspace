@@ -1,5 +1,5 @@
-// Ritaglia un'immagine al rapporto 6:5 centrando il soggetto
-export const cropTo6x5 = (file: File): Promise<Blob> => {
+// Ritaglia un'immagine al rapporto 6:5 con offset di posizione 0-1
+export const cropTo6x5 = (file: File, offsetX = 0.5, offsetY = 0.5): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
@@ -13,13 +13,13 @@ export const cropTo6x5 = (file: File): Promise<Blob> => {
       if (imgRatio > targetRatio) {
         sh = img.height
         sw = sh * targetRatio
-        sx = (img.width - sw) / 2
+        sx = (img.width - sw) * offsetX
         sy = 0
       } else {
         sw = img.width
         sh = sw / targetRatio
         sx = 0
-        sy = (img.height - sh) / 2
+        sy = (img.height - sh) * offsetY
       }
 
       const canvas = document.createElement('canvas')
