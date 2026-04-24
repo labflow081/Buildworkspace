@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useProject } from '@/hooks/useProjects'
+import { useAuth } from '@/contexts/AuthContext'
+import { logActivity } from '@/lib/logActivity'
 import { XPWindow } from '@/components/xp/XPWindow'
 import { TasksPage } from './TasksPage'
 import { IdeasPage } from './IdeasPage'
@@ -13,6 +15,7 @@ type Tab = 'tasks' | 'ideas'
 
 export const ProjectPage = () => {
   const { id } = useParams<{ id: string }>()
+  const { user } = useAuth()
   const { project, loading, updateCover, updateName } = useProject(id ?? '')
   const [tab, setTab] = useState<Tab>('tasks')
   const [coverOpen, setCoverOpen] = useState(false)
@@ -92,7 +95,7 @@ export const ProjectPage = () => {
         {tab === 'tasks' ? (
           <TasksPage projectId={project.id} />
         ) : (
-          <IdeasPage projectId={project.id} />
+          <IdeasPage projectId={project.id} onSwitchToTasks={() => setTab('tasks')} />
         )}
       </div>
 
@@ -155,7 +158,20 @@ export const ProjectPage = () => {
         open={renameOpen}
         onClose={() => setRenameOpen(false)}
         initialName={project.name}
-        onSave={updateName}
+        onSave={async (newName) => {
+          const oldName = project.name
+          await updateName(newName)
+          if (user) {
+            logActivity({
+              userId: user.id,
+              action_type: 'renamed_project',
+              target_type: 'project',
+              target_id: project.id,
+              project_id: project.id,
+              metadata: { old_name: oldName, new_name: newName },
+            })
+          }
+        }}
       />
     </XPWindow>
   )

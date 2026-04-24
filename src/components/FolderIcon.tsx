@@ -3,9 +3,10 @@ interface FolderIconProps {
   size?: 'sm' | 'lg'
   label?: string
   onClick?: () => void
+  pinned?: boolean
 }
 
-export const FolderIcon = ({ coverUrl, size = 'sm', label, onClick }: FolderIconProps) => {
+export const FolderIcon = ({ coverUrl, size = 'sm', label, onClick, pinned }: FolderIconProps) => {
   const w = size === 'sm' ? 72 : 96
   const h = size === 'sm' ? 60 : 80
   const tabW = size === 'sm' ? 24 : 32
@@ -56,6 +57,17 @@ export const FolderIcon = ({ coverUrl, size = 'sm', label, onClick }: FolderIcon
             pointerEvents: 'none',
           }} />
         </div>
+
+        {/* Indicatore pin */}
+        {pinned && (
+          <div style={{
+            position: 'absolute', top: tabH + 2, right: 2,
+            fontSize: 10, lineHeight: 1, pointerEvents: 'none',
+            filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.5))',
+          }}>
+            📌
+          </div>
+        )}
       </div>
 
       {label && (

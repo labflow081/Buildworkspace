@@ -4,7 +4,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useProfiles } from '@/hooks/useProfiles'
 import { NewIdeaDialog } from '@/components/dialogs/NewIdeaDialog'
 import { EditIdeaDialog } from '@/components/dialogs/EditIdeaDialog'
+import { PromoteToTaskDialog } from '@/components/dialogs/PromoteToTaskDialog'
 import { useLongPress } from '@/hooks/useLongPress'
+import { logActivity } from '@/lib/logActivity'
 import { Idea } from '@/types'
 import { playSound } from '@/lib/sounds'
 
@@ -13,11 +15,13 @@ const IdeaCard = ({
   authorName,
   onDelete,
   onEdit,
+  onPromote,
 }: {
   idea: Idea
   authorName: string
   onDelete: (id: string) => void
   onEdit: (idea: Idea) => void
+  onPromote: (idea: Idea) => void
 }) => {
   const longPress = useLongPress(() => onEdit(idea))
 
@@ -41,37 +45,66 @@ const IdeaCard = ({
         position: 'relative',
       }}
     >
-      {/* Tasto elimina — stopPropagation per non triggerare il long-press */}
-      <button
-        onClick={handleDelete}
-        onMouseDown={e => e.stopPropagation()}
-        onTouchStart={e => e.stopPropagation()}
-        title="Elimina idea"
-        style={{
-          position: 'absolute', top: 6, right: 6,
-          width: 22, height: 22,
-          borderRadius: 3,
-          border: '1px solid #ccc',
-          background: 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)',
-          color: '#bbb', fontSize: 11, fontWeight: 700,
-          cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-        onMouseOver={e => {
-          (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #E84444 0%, #B81818 100%)'
-          ;(e.currentTarget as HTMLElement).style.color = 'white'
-          ;(e.currentTarget as HTMLElement).style.borderColor = '#900'
-        }}
-        onMouseOut={e => {
-          (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)'
-          ;(e.currentTarget as HTMLElement).style.color = '#bbb'
-          ;(e.currentTarget as HTMLElement).style.borderColor = '#ccc'
-        }}
-      >
-        ✕
-      </button>
+      {/* Bottoni in alto a destra: promuovi + elimina */}
+      <div style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 3 }}>
+        {/* Bottone promuovi a task */}
+        <button
+          onClick={() => onPromote(idea)}
+          onMouseDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
+          title="Trasforma in task"
+          style={{
+            width: 22, height: 22, borderRadius: 3,
+            border: '1px solid #ccc',
+            background: 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)',
+            color: '#888', fontSize: 12, fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onMouseOver={e => {
+            (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #D0E8FF 0%, #7BB8FF 100%)'
+            ;(e.currentTarget as HTMLElement).style.color = '#1A1828'
+            ;(e.currentTarget as HTMLElement).style.borderColor = '#2A5BA5'
+          }}
+          onMouseOut={e => {
+            (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)'
+            ;(e.currentTarget as HTMLElement).style.color = '#888'
+            ;(e.currentTarget as HTMLElement).style.borderColor = '#ccc'
+          }}
+        >
+          ➜
+        </button>
 
-      {/* Area long-pressabile (testo + footer) */}
+        {/* Bottone elimina */}
+        <button
+          onClick={handleDelete}
+          onMouseDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
+          title="Elimina idea"
+          style={{
+            width: 22, height: 22, borderRadius: 3,
+            border: '1px solid #ccc',
+            background: 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)',
+            color: '#bbb', fontSize: 11, fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onMouseOver={e => {
+            (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #E84444 0%, #B81818 100%)'
+            ;(e.currentTarget as HTMLElement).style.color = 'white'
+            ;(e.currentTarget as HTMLElement).style.borderColor = '#900'
+          }}
+          onMouseOut={e => {
+            (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)'
+            ;(e.currentTarget as HTMLElement).style.color = '#bbb'
+            ;(e.currentTarget as HTMLElement).style.borderColor = '#ccc'
+          }}
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Area long-pressabile */}
       <div
         {...longPress}
         style={{ cursor: 'default', userSelect: 'none' }}
@@ -79,7 +112,7 @@ const IdeaCard = ({
         <p style={{
           fontSize: 12, color: '#1A1828', margin: 0,
           wordBreak: 'break-word', lineHeight: 1.5,
-          paddingRight: 28,
+          paddingRight: 52, // spazio per i due bottoni
         }}>
           {idea.text}
         </p>
@@ -96,14 +129,16 @@ const IdeaCard = ({
 
 interface Props {
   projectId: string
+  onSwitchToTasks?: () => void
 }
 
-export const IdeasPage = ({ projectId }: Props) => {
+export const IdeasPage = ({ projectId, onSwitchToTasks }: Props) => {
   const { user } = useAuth()
   const { ideas, loading, createIdea, deleteIdea, updateIdea } = useIdeas(projectId)
   const { profiles } = useProfiles()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingIdea, setEditingIdea] = useState<Idea | null>(null)
+  const [promotingIdea, setPromotingIdea] = useState<Idea | null>(null)
 
   const getName = (id: string) => {
     const p = profiles.find(p => p.id === id)
@@ -112,7 +147,14 @@ export const IdeasPage = ({ projectId }: Props) => {
 
   const handleCreate = async (text: string) => {
     if (!user) return
-    await createIdea(text, user.id)
+    const idea = await createIdea(text, user.id)
+    logActivity({
+      userId: user.id,
+      action_type: 'created_idea',
+      target_type: 'idea',
+      target_id: idea.id,
+      project_id: projectId,
+    })
   }
 
   const handleSaveEdit = async (text: string) => {
@@ -139,6 +181,7 @@ export const IdeasPage = ({ projectId }: Props) => {
             authorName={getName(idea.created_by)}
             onDelete={deleteIdea}
             onEdit={setEditingIdea}
+            onPromote={setPromotingIdea}
           />
         ))}
       </div>
@@ -170,6 +213,16 @@ export const IdeasPage = ({ projectId }: Props) => {
         onClose={() => setEditingIdea(null)}
         initialText={editingIdea?.text ?? ''}
         onSave={handleSaveEdit}
+      />
+
+      <PromoteToTaskDialog
+        open={promotingIdea !== null}
+        onClose={() => setPromotingIdea(null)}
+        idea={promotingIdea}
+        profiles={profiles}
+        currentUserId={user?.id ?? null}
+        onDeleteIdea={deleteIdea}
+        onSuccess={() => onSwitchToTasks?.()}
       />
     </div>
   )

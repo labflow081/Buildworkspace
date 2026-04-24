@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTasks } from '@/hooks/useTasks'
 import { useProfiles } from '@/hooks/useProfiles'
 import { useAuth } from '@/contexts/AuthContext'
 import { NewTaskDialog } from '@/components/dialogs/NewTaskDialog'
 import { EditTaskDialog } from '@/components/dialogs/EditTaskDialog'
 import { useLongPress } from '@/hooks/useLongPress'
+import { logActivity } from '@/lib/logActivity'
 import { Task } from '@/types'
 import { playSound } from '@/lib/sounds'
 
@@ -18,15 +19,26 @@ const TaskRow = ({
   onToggle,
   onDelete,
   onEdit,
+  highlighted,
 }: {
   task: Task
   assigneeName: string
   onToggle: (id: string, done: boolean) => void
   onDelete: (id: string) => void
   onEdit: (task: Task) => void
+  highlighted: boolean
 }) => {
   const [animating, setAnimating] = useState(false)
+  const [showHighlight, setShowHighlight] = useState(highlighted)
   const longPress = useLongPress(() => onEdit(task))
+
+  useEffect(() => {
+    if (highlighted) {
+      setShowHighlight(true)
+      const t = setTimeout(() => setShowHighlight(false), 1500)
+      return () => clearTimeout(t)
+    }
+  }, [highlighted])
 
   const handleToggle = () => {
     setAnimating(true)
@@ -50,13 +62,14 @@ const TaskRow = ({
       style={{
         borderBottom: '1px solid #d0cdc5',
         opacity: animating ? 0.5 : 1,
-        transition: 'opacity 0.15s',
+        transition: 'opacity 0.15s, background 0.6s ease',
         minHeight: 44,
-        background: task.done ? 'rgba(0,0,0,0.02)' : 'transparent',
+        background: showHighlight
+          ? 'rgba(255, 215, 0, 0.35)'
+          : task.done ? 'rgba(0,0,0,0.02)' : 'transparent',
         paddingTop: 6, paddingBottom: 6,
       }}
     >
-      {/* Checkbox — stopPropagation per non triggerare il long-press */}
       <input
         type="checkbox"
         checked={task.done}
@@ -66,7 +79,6 @@ const TaskRow = ({
         style={{ width: 16, height: 16, marginTop: 2, cursor: 'pointer', accentColor: '#2A5BA5', flexShrink: 0 }}
       />
 
-      {/* Area long-pressabile (testo + metadati) */}
       <div
         className="flex-1 min-w-0"
         {...longPress}
@@ -89,23 +101,19 @@ const TaskRow = ({
         </div>
       </div>
 
-      {/* Tasto elimina — stopPropagation per non triggerare il long-press */}
       <button
         onClick={handleDelete}
         onMouseDown={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
         title="Elimina task"
         style={{
-          width: 22, height: 22,
-          borderRadius: 3,
+          width: 22, height: 22, borderRadius: 3,
           border: '1px solid #ccc',
           background: 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)',
-          color: '#999',
-          fontSize: 11, fontWeight: 700,
+          color: '#999', fontSize: 11, fontWeight: 700,
           cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-          marginTop: 1,
+          flexShrink: 0, marginTop: 1,
         }}
         onMouseOver={e => {
           (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #E84444 0%, #B81818 100%)'
@@ -131,6 +139,13 @@ export const TasksPage = ({ projectId }: Props) => {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
 
+  // Task appena promossa da un'idea (da sessionStorage)
+  const [highlightId] = useState<string | null>(() => {
+    const id = sessionStorage.getItem('promotedTaskId')
+    if (id) sessionStorage.removeItem('promotedTaskId')
+    return id
+  })
+
   const todo = tasks.filter(t => !t.done)
   const done = tasks.filter(t => t.done)
 
@@ -142,7 +157,28 @@ export const TasksPage = ({ projectId }: Props) => {
 
   const handleCreate = async (data: { text: string; assignee: string | null; due_date: string | null }) => {
     if (!user) return
-    await createTask({ ...data, created_by: user.id })
+    const task = await createTask({ ...data, created_by: user.id })
+    logActivity({
+      userId: user.id,
+      action_type: 'created_task',
+      target_type: 'task',
+      target_id: task.id,
+      project_id: projectId,
+    })
+  }
+
+  const handleToggle = async (taskId: string, done: boolean) => {
+    await toggleDone(taskId, done)
+    // Logga solo quando si completa (da false a true)
+    if (done && user) {
+      logActivity({
+        userId: user.id,
+        action_type: 'completed_task',
+        target_type: 'task',
+        target_id: taskId,
+        project_id: projectId,
+      })
+    }
   }
 
   const handleSaveEdit = async (data: { text: string; assignee: string | null; due_date: string | null }) => {
@@ -171,7 +207,7 @@ export const TasksPage = ({ projectId }: Props) => {
           <div>
             <SectionHeader label={`Da fare (${todo.length})`} />
             {todo.map(t => (
-              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} onDelete={deleteTask} onEdit={setEditingTask} />
+              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={handleToggle} onDelete={deleteTask} onEdit={setEditingTask} highlighted={highlightId === t.id} />
             ))}
           </div>
         )}
@@ -179,7 +215,7 @@ export const TasksPage = ({ projectId }: Props) => {
           <div>
             <SectionHeader label={`Fatte (${done.length})`} />
             {done.map(t => (
-              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} onDelete={deleteTask} onEdit={setEditingTask} />
+              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={handleToggle} onDelete={deleteTask} onEdit={setEditingTask} highlighted={highlightId === t.id} />
             ))}
           </div>
         )}
@@ -190,7 +226,6 @@ export const TasksPage = ({ projectId }: Props) => {
         )}
       </div>
 
-      {/* FAB + */}
       <button
         onClick={() => setDialogOpen(true)}
         style={{

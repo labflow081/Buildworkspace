@@ -1,6 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Project } from '@/types'
+
+const sortProjects = (list: Project[]): Project[] =>
+  [...list].sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1
+    if (!a.pinned && b.pinned) return 1
+    if (a.pinned && b.pinned)
+      return (b.pinned_at ?? '').localeCompare(a.pinned_at ?? '')
+    return b.created_at.localeCompare(a.created_at)
+  })
 
 export const useProjects = () => {
   const [projects, setProjects] = useState<Project[]>([])
@@ -19,6 +28,8 @@ export const useProjects = () => {
   }
 
   useEffect(() => { fetch() }, [])
+
+  const sorted = useMemo(() => sortProjects(projects), [projects])
 
   const createProject = async (name: string, userId: string) => {
     const { data, error } = await supabase
@@ -40,13 +51,26 @@ export const useProjects = () => {
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, cover_url: coverUrl } : p))
   }
 
+  const updateName = async (projectId: string, name: string) => {
+    const { error } = await supabase.from('projects').update({ name }).eq('id', projectId)
+    if (error) throw error
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name } : p))
+  }
+
+  const pinProject = async (projectId: string, pinned: boolean) => {
+    const update = { pinned, pinned_at: pinned ? new Date().toISOString() : null }
+    const { error } = await supabase.from('projects').update(update).eq('id', projectId)
+    if (error) throw error
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, ...update } : p))
+  }
+
   const deleteProject = async (projectId: string) => {
     const { error } = await supabase.from('projects').delete().eq('id', projectId)
     if (error) throw error
     setProjects(prev => prev.filter(p => p.id !== projectId))
   }
 
-  return { projects, loading, error, createProject, updateCover, deleteProject, refetch: fetch }
+  return { projects: sorted, loading, error, createProject, updateCover, updateName, pinProject, deleteProject, refetch: fetch }
 }
 
 export const useProject = (projectId: string) => {

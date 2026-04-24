@@ -1,3 +1,22 @@
+export type ActivityActionType =
+  | 'created_idea'
+  | 'created_task'
+  | 'completed_task'
+  | 'promoted_idea_to_task'
+  | 'created_project'
+  | 'renamed_project'
+
+export interface Activity {
+  id: string
+  user_id: string
+  action_type: ActivityActionType
+  target_type: 'idea' | 'task' | 'project'
+  target_id: string
+  project_id: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
 export interface Profile {
   id: string
   display_name: string | null
@@ -10,6 +29,8 @@ export interface Project {
   cover_url: string | null
   created_by: string
   created_at: string
+  pinned?: boolean
+  pinned_at?: string | null
 }
 
 export interface Task {

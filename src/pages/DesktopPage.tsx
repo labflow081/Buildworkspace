@@ -1,16 +1,89 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProjects } from '@/hooks/useProjects'
 import { useAuth } from '@/contexts/AuthContext'
+import { useWindows } from '@/contexts/WindowContext'
 import { FolderIcon } from '@/components/FolderIcon'
+import { FolderContextMenu } from '@/components/FolderContextMenu'
+import { CoverLightbox } from '@/components/CoverLightbox'
+import { ActivityFeed } from '@/components/ActivityFeed'
 import { NewProjectDialog } from '@/components/dialogs/NewProjectDialog'
+import { RenameProjectDialog } from '@/components/dialogs/RenameProjectDialog'
+import { useLongPress } from '@/hooks/useLongPress'
+import { logActivity } from '@/lib/logActivity'
 import { playSound } from '@/lib/sounds'
+import { Project } from '@/types'
+
+// ID fisso per la finestra attività nel sistema di minimize
+const FEED_WINDOW_ID = 'activity-feed'
+
+// Componente wrapper per ogni cartella: gestisce long-press e click
+const FolderItem = ({
+  project,
+  onOpen,
+  onContextMenu,
+}: {
+  project: Project
+  onOpen: (id: string) => void
+  onContextMenu: (project: Project, x: number, y: number) => void
+}) => {
+  const wasFiredRef = useRef(false)
+  const folderRef = useRef<HTMLDivElement>(null)
+
+  const longPress = useLongPress(() => {
+    wasFiredRef.current = true
+    const rect = folderRef.current?.getBoundingClientRect()
+    const x = rect ? rect.left : 80
+    const y = rect ? rect.bottom + 4 : 80
+    onContextMenu(project, x, y)
+  })
+
+  return (
+    <div
+      ref={folderRef}
+      {...longPress}
+      onClick={() => {
+        if (wasFiredRef.current) { wasFiredRef.current = false; return }
+        onOpen(project.id)
+      }}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+    >
+      <FolderIcon
+        coverUrl={project.cover_url}
+        label={project.name}
+        size="sm"
+        pinned={project.pinned}
+      />
+    </div>
+  )
+}
 
 export const DesktopPage = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { projects, loading, createProject } = useProjects()
+  const { minimized, addMinimized, removeMinimized } = useWindows()
+  const { projects, loading, createProject, updateName, pinProject, deleteProject } = useProjects()
+
   const [newProjectOpen, setNewProjectOpen] = useState(false)
+
+  // Context menu
+  const [contextMenu, setContextMenu] = useState<{
+    project: Project; x: number; y: number
+  } | null>(null)
+
+  // Lightbox
+  const [lightbox, setLightbox] = useState<{ coverUrl: string; name: string } | null>(null)
+
+  // Rename dialog (dalla Home)
+  const [renaming, setRenaming] = useState<Project | null>(null)
+
+  // Conferma eliminazione
+  const [deleting, setDeleting] = useState<Project | null>(null)
+
+  // Feed attività
+  const isFeedMinimized = minimized.some(w => w.id === FEED_WINDOW_ID)
+  const [feedClosed, setFeedClosed] = useState(() => !!sessionStorage.getItem('feedClosed'))
+  const showFeed = !feedClosed && !isFeedMinimized
 
   const handleOpenProject = (id: string) => {
     playSound('navigate')
@@ -20,7 +93,56 @@ export const DesktopPage = () => {
   const handleCreate = async (name: string) => {
     if (!user) return
     const project = await createProject(name, user.id)
+    logActivity({
+      userId: user.id,
+      action_type: 'created_project',
+      target_type: 'project',
+      target_id: project.id,
+      project_id: project.id,
+      metadata: { project_name: name },
+    })
     navigate(`/project/${project.id}`)
+  }
+
+  const handleContextMenu = (project: Project, x: number, y: number) => {
+    playSound('navigate')
+    setContextMenu({ project, x, y })
+  }
+
+  const handlePin = async () => {
+    if (!contextMenu) return
+    await pinProject(contextMenu.project.id, !contextMenu.project.pinned)
+  }
+
+  const handleRenameConfirm = async (newName: string) => {
+    if (!renaming || !user) return
+    const oldName = renaming.name
+    await updateName(renaming.id, newName)
+    logActivity({
+      userId: user.id,
+      action_type: 'renamed_project',
+      target_type: 'project',
+      target_id: renaming.id,
+      project_id: renaming.id,
+      metadata: { old_name: oldName, new_name: newName },
+    })
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleting) return
+    await deleteProject(deleting.id)
+    setDeleting(null)
+    playSound('navigate')
+  }
+
+  const handleFeedMinimize = () => {
+    addMinimized({ id: FEED_WINDOW_ID, title: 'Attività recenti', path: '/desktop' })
+  }
+
+  const handleFeedClose = () => {
+    sessionStorage.setItem('feedClosed', '1')
+    setFeedClosed(true)
+    if (isFeedMinimized) removeMinimized(FEED_WINDOW_ID)
   }
 
   return (
@@ -28,9 +150,10 @@ export const DesktopPage = () => {
       className="w-full h-full overflow-y-auto"
       style={{
         background: 'linear-gradient(180deg, #4A90D9 0%, #6BB6E8 38%, #8FCBF0 52%, #A8D88B 57%, #6FAB47 75%, #4A8B2C 100%)',
-        paddingBottom: 56, // spazio taskbar
+        paddingBottom: 56,
         paddingTop: 8,
       }}
+      onClick={() => setContextMenu(null)}
     >
       <div
         className="grid px-4 py-2"
@@ -58,9 +181,7 @@ export const DesktopPage = () => {
               borderRadius: '2px 6px 4px 4px',
               border: '2px dashed #6FAB47',
               boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <span style={{ fontSize: 24, color: '#6FAB47', fontWeight: 700 }}>+</span>
             </div>
@@ -81,12 +202,11 @@ export const DesktopPage = () => {
           </div>
         ) : (
           projects.map(p => (
-            <FolderIcon
+            <FolderItem
               key={p.id}
-              coverUrl={p.cover_url}
-              label={p.name}
-              size="sm"
-              onClick={() => handleOpenProject(p.id)}
+              project={p}
+              onOpen={handleOpenProject}
+              onContextMenu={handleContextMenu}
             />
           ))
         )}
@@ -97,6 +217,91 @@ export const DesktopPage = () => {
         onClose={() => setNewProjectOpen(false)}
         onCreate={handleCreate}
       />
+
+      {/* Context menu cartella */}
+      {contextMenu && (
+        <FolderContextMenu
+          project={contextMenu.project}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onOpen={() => handleOpenProject(contextMenu.project.id)}
+          onLightbox={() => {
+            if (contextMenu.project.cover_url) {
+              setLightbox({ coverUrl: contextMenu.project.cover_url, name: contextMenu.project.name })
+            }
+          }}
+          onRename={() => setRenaming(contextMenu.project)}
+          onPin={handlePin}
+          onDelete={() => setDeleting(contextMenu.project)}
+        />
+      )}
+
+      {/* Dialog rinomina (dalla Home) */}
+      <RenameProjectDialog
+        open={renaming !== null}
+        onClose={() => setRenaming(null)}
+        initialName={renaming?.name ?? ''}
+        onSave={handleRenameConfirm}
+      />
+
+      {/* Dialog conferma eliminazione */}
+      {deleting && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.35)' }}
+          onClick={e => { if (e.target === e.currentTarget) setDeleting(null) }}
+        >
+          <div className="xp-window w-full max-w-xs animate-xp-open" style={{ borderRadius: '8px 8px 4px 4px' }}>
+            <div className="xp-titlebar" style={{ borderRadius: '6px 6px 0 0' }}>
+              <div className="w-4 h-4 flex-shrink-0">
+                <svg viewBox="0 0 16 16" width="14" height="14">
+                  <rect x="2" y="2" width="12" height="12" rx="1" fill="#E84444" stroke="#900" strokeWidth="0.5"/>
+                  <text x="8" y="11" fontSize="9" textAnchor="middle" fill="white" fontWeight="700">!</text>
+                </svg>
+              </div>
+              <span className="xp-titlebar-title">Elimina progetto</span>
+              <button className="xp-window-btn xp-window-btn-close" onClick={() => setDeleting(null)}>✕</button>
+            </div>
+            <div className="p-4" style={{ background: '#ECE9D8' }}>
+              <p style={{ fontSize: 12, color: '#1A1828', margin: '0 0 4px' }}>
+                Sei sicuro di voler eliminare <strong>"{deleting.name}"</strong>?
+              </p>
+              <p style={{ fontSize: 11, color: '#666', margin: 0 }}>
+                Tutte le task e le idee verranno eliminate.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 px-4 pb-4" style={{ background: '#ECE9D8', borderTop: '1px solid #ccc', paddingTop: 8 }}>
+              <button
+                onClick={handleDeleteConfirm}
+                className="xp-button primary"
+                style={{ borderColor: '#900', background: 'linear-gradient(180deg, #FF6666 0%, #CC0000 100%)' }}
+              >
+                Elimina
+              </button>
+              <button className="xp-button" onClick={() => setDeleting(null)}>Annulla</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox copertina */}
+      {lightbox && (
+        <CoverLightbox
+          open
+          onClose={() => setLightbox(null)}
+          coverUrl={lightbox.coverUrl}
+          projectName={lightbox.name}
+        />
+      )}
+
+      {/* Feed attività (fixed in basso a destra) */}
+      {showFeed && (
+        <ActivityFeed
+          onMinimize={handleFeedMinimize}
+          onClose={handleFeedClose}
+        />
+      )}
     </div>
   )
 }
