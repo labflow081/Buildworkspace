@@ -22,6 +22,7 @@ export interface Task {
   created_by: string
   created_at: string
   completed_at: string | null
+  updated_at?: string | null
 }
 
 export interface Idea {
@@ -30,6 +31,7 @@ export interface Idea {
   text: string
   created_by: string
   created_at: string
+  updated_at?: string | null
 }
 
 export interface MinimizedWindow {

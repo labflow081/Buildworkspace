@@ -59,6 +59,20 @@ export const useProject = (projectId: string) => {
       setProject(data as Project)
       setLoading(false)
     })
+
+    const channel = supabase
+      .channel(`project:${projectId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'projects',
+        filter: `id=eq.${projectId}`
+      }, payload => {
+        setProject(payload.new as Project)
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   }, [projectId])
 
   const updateCover = async (coverUrl: string) => {
@@ -66,5 +80,11 @@ export const useProject = (projectId: string) => {
     setProject(prev => prev ? { ...prev, cover_url: coverUrl } : prev)
   }
 
-  return { project, loading, updateCover }
+  const updateName = async (name: string) => {
+    const { error } = await supabase.from('projects').update({ name }).eq('id', projectId)
+    if (error) throw error
+    setProject(prev => prev ? { ...prev, name } : prev)
+  }
+
+  return { project, loading, updateCover, updateName }
 }

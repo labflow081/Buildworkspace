@@ -3,6 +3,8 @@ import { useTasks } from '@/hooks/useTasks'
 import { useProfiles } from '@/hooks/useProfiles'
 import { useAuth } from '@/contexts/AuthContext'
 import { NewTaskDialog } from '@/components/dialogs/NewTaskDialog'
+import { EditTaskDialog } from '@/components/dialogs/EditTaskDialog'
+import { useLongPress } from '@/hooks/useLongPress'
 import { Task } from '@/types'
 import { playSound } from '@/lib/sounds'
 
@@ -15,13 +17,16 @@ const TaskRow = ({
   assigneeName,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   task: Task
   assigneeName: string
   onToggle: (id: string, done: boolean) => void
   onDelete: (id: string) => void
+  onEdit: (task: Task) => void
 }) => {
   const [animating, setAnimating] = useState(false)
+  const longPress = useLongPress(() => onEdit(task))
 
   const handleToggle = () => {
     setAnimating(true)
@@ -51,13 +56,22 @@ const TaskRow = ({
         paddingTop: 6, paddingBottom: 6,
       }}
     >
+      {/* Checkbox — stopPropagation per non triggerare il long-press */}
       <input
         type="checkbox"
         checked={task.done}
         onChange={handleToggle}
+        onMouseDown={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
         style={{ width: 16, height: 16, marginTop: 2, cursor: 'pointer', accentColor: '#2A5BA5', flexShrink: 0 }}
       />
-      <div className="flex-1 min-w-0">
+
+      {/* Area long-pressabile (testo + metadati) */}
+      <div
+        className="flex-1 min-w-0"
+        {...longPress}
+        style={{ cursor: 'default', userSelect: 'none' }}
+      >
         <p style={{
           fontSize: 12, color: task.done ? '#999' : '#1A1828',
           textDecoration: task.done ? 'line-through' : 'none',
@@ -75,9 +89,11 @@ const TaskRow = ({
         </div>
       </div>
 
-      {/* Tasto elimina */}
+      {/* Tasto elimina — stopPropagation per non triggerare il long-press */}
       <button
         onClick={handleDelete}
+        onMouseDown={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
         title="Elimina task"
         style={{
           width: 22, height: 22,
@@ -110,9 +126,10 @@ const TaskRow = ({
 
 export const TasksPage = ({ projectId }: Props) => {
   const { user } = useAuth()
-  const { tasks, loading, createTask, toggleDone, deleteTask } = useTasks(projectId)
+  const { tasks, loading, createTask, toggleDone, deleteTask, updateTask } = useTasks(projectId)
   const { profiles } = useProfiles()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
 
   const todo = tasks.filter(t => !t.done)
   const done = tasks.filter(t => t.done)
@@ -126,6 +143,11 @@ export const TasksPage = ({ projectId }: Props) => {
   const handleCreate = async (data: { text: string; assignee: string | null; due_date: string | null }) => {
     if (!user) return
     await createTask({ ...data, created_by: user.id })
+  }
+
+  const handleSaveEdit = async (data: { text: string; assignee: string | null; due_date: string | null }) => {
+    if (!editingTask) return
+    await updateTask(editingTask.id, data)
   }
 
   if (loading) {
@@ -149,7 +171,7 @@ export const TasksPage = ({ projectId }: Props) => {
           <div>
             <SectionHeader label={`Da fare (${todo.length})`} />
             {todo.map(t => (
-              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} onDelete={deleteTask} />
+              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} onDelete={deleteTask} onEdit={setEditingTask} />
             ))}
           </div>
         )}
@@ -157,7 +179,7 @@ export const TasksPage = ({ projectId }: Props) => {
           <div>
             <SectionHeader label={`Fatte (${done.length})`} />
             {done.map(t => (
-              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} onDelete={deleteTask} />
+              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={toggleDone} onDelete={deleteTask} onEdit={setEditingTask} />
             ))}
           </div>
         )}
@@ -189,6 +211,14 @@ export const TasksPage = ({ projectId }: Props) => {
         onClose={() => setDialogOpen(false)}
         profiles={profiles}
         onCreate={handleCreate}
+      />
+
+      <EditTaskDialog
+        open={editingTask !== null}
+        onClose={() => setEditingTask(null)}
+        task={editingTask}
+        profiles={profiles}
+        onSave={handleSaveEdit}
       />
     </div>
   )

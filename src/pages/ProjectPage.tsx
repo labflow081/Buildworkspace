@@ -6,15 +6,17 @@ import { TasksPage } from './TasksPage'
 import { IdeasPage } from './IdeasPage'
 import { FolderIcon } from '@/components/FolderIcon'
 import { ChangeCoverDialog } from '@/components/dialogs/ChangeCoverDialog'
+import { RenameProjectDialog } from '@/components/dialogs/RenameProjectDialog'
 import { playSound } from '@/lib/sounds'
 
 type Tab = 'tasks' | 'ideas'
 
 export const ProjectPage = () => {
   const { id } = useParams<{ id: string }>()
-  const { project, loading, updateCover } = useProject(id ?? '')
+  const { project, loading, updateCover, updateName } = useProject(id ?? '')
   const [tab, setTab] = useState<Tab>('tasks')
   const [coverOpen, setCoverOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
 
   if (loading || !project) {
     return (
@@ -106,7 +108,21 @@ export const ProjectPage = () => {
       }}>
         <FolderIcon coverUrl={project.cover_url} size="sm" />
         <div className="flex-1 min-w-0">
-          <div className="truncate" style={{ fontSize: 11, fontWeight: 600, color: '#1A1828' }}>{project.name}</div>
+          <div className="flex items-center gap-1">
+            <div className="truncate" style={{ fontSize: 11, fontWeight: 600, color: '#1A1828' }}>{project.name}</div>
+            <button
+              onClick={() => setRenameOpen(true)}
+              title="Rinomina progetto"
+              style={{
+                background: 'none', border: 'none', padding: '2px',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0,
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                <path d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z" stroke="#777" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
           <div style={{ fontSize: 10, color: '#666' }}>
             {project.cover_url ? 'Copertina personalizzata' : 'Nessuna copertina'}
           </div>
@@ -133,6 +149,13 @@ export const ProjectPage = () => {
         projectId={project.id}
         currentCover={project.cover_url}
         onSaved={(url) => { updateCover(url); setCoverOpen(false) }}
+      />
+
+      <RenameProjectDialog
+        open={renameOpen}
+        onClose={() => setRenameOpen(false)}
+        initialName={project.name}
+        onSave={updateName}
       />
     </XPWindow>
   )

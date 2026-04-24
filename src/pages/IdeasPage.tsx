@@ -3,6 +3,8 @@ import { useIdeas } from '@/hooks/useIdeas'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProfiles } from '@/hooks/useProfiles'
 import { NewIdeaDialog } from '@/components/dialogs/NewIdeaDialog'
+import { EditIdeaDialog } from '@/components/dialogs/EditIdeaDialog'
+import { useLongPress } from '@/hooks/useLongPress'
 import { Idea } from '@/types'
 import { playSound } from '@/lib/sounds'
 
@@ -10,11 +12,15 @@ const IdeaCard = ({
   idea,
   authorName,
   onDelete,
+  onEdit,
 }: {
   idea: Idea
   authorName: string
   onDelete: (id: string) => void
+  onEdit: (idea: Idea) => void
 }) => {
+  const longPress = useLongPress(() => onEdit(idea))
+
   const handleDelete = () => {
     if (window.confirm('Eliminare questa idea?')) {
       onDelete(idea.id)
@@ -35,9 +41,11 @@ const IdeaCard = ({
         position: 'relative',
       }}
     >
-      {/* Tasto elimina */}
+      {/* Tasto elimina — stopPropagation per non triggerare il long-press */}
       <button
         onClick={handleDelete}
+        onMouseDown={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
         title="Elimina idea"
         style={{
           position: 'absolute', top: 6, right: 6,
@@ -63,18 +71,24 @@ const IdeaCard = ({
         ✕
       </button>
 
-      <p style={{
-        fontSize: 12, color: '#1A1828', margin: 0,
-        wordBreak: 'break-word', lineHeight: 1.5,
-        paddingRight: 28, // spazio per il tasto elimina
-      }}>
-        {idea.text}
-      </p>
-      <div className="flex items-center justify-between mt-2">
-        <span style={{ fontSize: 10, color: '#999' }}>💡 {authorName}</span>
-        <span style={{ fontSize: 10, color: '#bbb' }}>
-          {new Date(idea.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}
-        </span>
+      {/* Area long-pressabile (testo + footer) */}
+      <div
+        {...longPress}
+        style={{ cursor: 'default', userSelect: 'none' }}
+      >
+        <p style={{
+          fontSize: 12, color: '#1A1828', margin: 0,
+          wordBreak: 'break-word', lineHeight: 1.5,
+          paddingRight: 28,
+        }}>
+          {idea.text}
+        </p>
+        <div className="flex items-center justify-between mt-2">
+          <span style={{ fontSize: 10, color: '#999' }}>💡 {authorName}</span>
+          <span style={{ fontSize: 10, color: '#bbb' }}>
+            {new Date(idea.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}
+          </span>
+        </div>
       </div>
     </div>
   )
@@ -86,9 +100,10 @@ interface Props {
 
 export const IdeasPage = ({ projectId }: Props) => {
   const { user } = useAuth()
-  const { ideas, loading, createIdea, deleteIdea } = useIdeas(projectId)
+  const { ideas, loading, createIdea, deleteIdea, updateIdea } = useIdeas(projectId)
   const { profiles } = useProfiles()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingIdea, setEditingIdea] = useState<Idea | null>(null)
 
   const getName = (id: string) => {
     const p = profiles.find(p => p.id === id)
@@ -98,6 +113,11 @@ export const IdeasPage = ({ projectId }: Props) => {
   const handleCreate = async (text: string) => {
     if (!user) return
     await createIdea(text, user.id)
+  }
+
+  const handleSaveEdit = async (text: string) => {
+    if (!editingIdea) return
+    await updateIdea(editingIdea.id, text)
   }
 
   if (loading) {
@@ -118,6 +138,7 @@ export const IdeasPage = ({ projectId }: Props) => {
             idea={idea}
             authorName={getName(idea.created_by)}
             onDelete={deleteIdea}
+            onEdit={setEditingIdea}
           />
         ))}
       </div>
@@ -142,6 +163,13 @@ export const IdeasPage = ({ projectId }: Props) => {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onCreate={handleCreate}
+      />
+
+      <EditIdeaDialog
+        open={editingIdea !== null}
+        onClose={() => setEditingIdea(null)}
+        initialText={editingIdea?.text ?? ''}
+        onSave={handleSaveEdit}
       />
     </div>
   )

@@ -34,6 +34,14 @@ export const useIdeas = (projectId: string) => {
           return [payload.new as Idea, ...prev]
         })
       })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'ideas',
+        filter: `project_id=eq.${projectId}`
+      }, payload => {
+        setIdeas(prev => prev.map(i => i.id === payload.new.id ? payload.new as Idea : i))
+      })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -55,5 +63,11 @@ export const useIdeas = (projectId: string) => {
     setIdeas(prev => prev.filter(i => i.id !== ideaId))
   }
 
-  return { ideas, loading, createIdea, deleteIdea }
+  const updateIdea = async (ideaId: string, text: string) => {
+    const { error } = await supabase.from('ideas').update({ text }).eq('id', ideaId)
+    if (error) throw error
+    setIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, text } : i))
+  }
+
+  return { ideas, loading, createIdea, deleteIdea, updateIdea }
 }
