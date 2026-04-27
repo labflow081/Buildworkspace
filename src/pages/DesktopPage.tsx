@@ -61,7 +61,7 @@ const FolderItem = ({
 export const DesktopPage = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { minimized, addMinimized, removeMinimized } = useWindows()
+  const { minimized, addMinimized } = useWindows()
   const { projects, loading, createProject, updateName, pinProject, deleteProject } = useProjects()
 
   const [newProjectOpen, setNewProjectOpen] = useState(false)
@@ -82,8 +82,7 @@ export const DesktopPage = () => {
 
   // Feed attività
   const isFeedMinimized = minimized.some(w => w.id === FEED_WINDOW_ID)
-  const [feedClosed, setFeedClosed] = useState(() => !!sessionStorage.getItem('feedClosed'))
-  const showFeed = !feedClosed && !isFeedMinimized
+  const showFeed = !isFeedMinimized
 
   const handleOpenProject = (id: string) => {
     playSound('navigate')
@@ -137,12 +136,6 @@ export const DesktopPage = () => {
 
   const handleFeedMinimize = () => {
     addMinimized({ id: FEED_WINDOW_ID, title: 'Attività recenti', path: '/desktop' })
-  }
-
-  const handleFeedClose = () => {
-    sessionStorage.setItem('feedClosed', '1')
-    setFeedClosed(true)
-    if (isFeedMinimized) removeMinimized(FEED_WINDOW_ID)
   }
 
   return (
@@ -299,7 +292,7 @@ export const DesktopPage = () => {
       {showFeed && (
         <ActivityFeed
           onMinimize={handleFeedMinimize}
-          onClose={handleFeedClose}
+          onClose={handleFeedMinimize}
         />
       )}
     </div>

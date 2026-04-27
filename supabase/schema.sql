@@ -109,3 +109,35 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 CREATE POLICY "covers_select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'covers');
 CREATE POLICY "covers_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'covers');
 CREATE POLICY "covers_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'covers');
+
+-- ============================================================
+-- Sprint 3: tag e priority su ideas e tasks
+-- Eseguire nel SQL Editor di Supabase
+-- ============================================================
+
+ALTER TABLE public.ideas ADD COLUMN IF NOT EXISTS tag      text DEFAULT NULL;
+ALTER TABLE public.ideas ADD COLUMN IF NOT EXISTS priority text DEFAULT NULL;
+
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS tag      text DEFAULT NULL;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS priority text DEFAULT NULL;
+
+-- ============================================================
+-- Sprint 3b: Cartelle idee
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.idea_folders (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id  uuid REFERENCES public.projects ON DELETE CASCADE NOT NULL,
+  name        text NOT NULL CHECK (char_length(name) <= 60),
+  created_by  uuid REFERENCES auth.users NOT NULL,
+  created_at  timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.ideas
+  ADD COLUMN IF NOT EXISTS folder_id uuid REFERENCES public.idea_folders ON DELETE SET NULL;
+
+ALTER TABLE public.idea_folders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "idea_folders_select" ON public.idea_folders FOR SELECT TO authenticated USING (true);
+CREATE POLICY "idea_folders_insert" ON public.idea_folders FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "idea_folders_update" ON public.idea_folders FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "idea_folders_delete" ON public.idea_folders FOR DELETE TO authenticated USING (true);

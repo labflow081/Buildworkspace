@@ -110,5 +110,11 @@ export const useProject = (projectId: string) => {
     setProject(prev => prev ? { ...prev, name } : prev)
   }
 
-  return { project, loading, updateCover, updateName }
+  const updateWebUrl = async (webUrl: string | null) => {
+    const { error } = await supabase.from('projects').update({ web_url: webUrl }).eq('id', projectId)
+    if (error) throw error
+    setProject(prev => prev ? { ...prev, web_url: webUrl } : prev)
+  }
+
+  return { project, loading, updateCover, updateName, updateWebUrl }
 }

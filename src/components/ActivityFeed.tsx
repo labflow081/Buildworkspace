@@ -17,13 +17,26 @@ const relativeTime = (dateStr: string): string => {
 
 const activityText = (a: Activity): string => {
   const m = a.metadata as Record<string, string>
+  const inProject = m.project_name ? ` in "${m.project_name}"` : ''
   switch (a.action_type) {
-    case 'created_idea':       return "ha aggiunto un'idea"
-    case 'created_task':       return 'ha aggiunto una task'
-    case 'completed_task':     return 'ha completato una task'
-    case 'promoted_idea_to_task': return "ha trasformato un'idea in task"
+    case 'created_idea':
+      return `ha aggiunto un'idea${inProject}`
+    case 'updated_idea':
+      return `ha modificato un'idea${inProject}`
+    case 'created_task':
+      return `ha creato una task${inProject}`
+    case 'assigned_task':
+      return `ha assegnato una task${inProject}`
+    case 'completed_task':
+      return `ha completato una task${inProject}`
+    case 'promoted_idea_to_task':
+      return `ha promosso un'idea a task${inProject}`
+    case 'commented':
+      return a.target_type === 'idea'
+        ? `ha commentato un'idea${inProject}`
+        : `ha commentato una task${inProject}`
     case 'created_project':
-      return m.project_name ? `ha creato "${m.project_name}"` : 'ha creato un progetto'
+      return m.project_name ? `ha creato il progetto "${m.project_name}"` : 'ha creato un progetto'
     case 'renamed_project':
       return m.old_name && m.new_name
         ? `ha rinominato "${m.old_name}" in "${m.new_name}"`

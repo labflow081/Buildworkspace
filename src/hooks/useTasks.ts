@@ -53,6 +53,8 @@ export const useTasks = (projectId: string) => {
     assignee: string | null
     due_date: string | null
     created_by: string
+    tag?: string | null
+    priority?: string | null
   }) => {
     const { data: task, error } = await supabase
       .from('tasks')
@@ -78,10 +80,16 @@ export const useTasks = (projectId: string) => {
     setTasks(prev => prev.filter(t => t.id !== taskId))
   }
 
-  const updateTask = async (taskId: string, data: { text: string; assignee: string | null; due_date: string | null }) => {
+  const updateTask = async (taskId: string, data: {
+    text: string
+    assignee: string | null
+    due_date: string | null
+    tag?: string | null
+    priority?: string | null
+  }) => {
     const { error } = await supabase.from('tasks').update(data).eq('id', taskId)
     if (error) throw error
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...data } : t))
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...data } as Task : t))
   }
 
   return { tasks, loading, createTask, toggleDone, deleteTask, updateTask }

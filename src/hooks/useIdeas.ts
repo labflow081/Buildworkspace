@@ -47,10 +47,16 @@ export const useIdeas = (projectId: string) => {
     return () => { supabase.removeChannel(channel) }
   }, [projectId, fetch])
 
-  const createIdea = async (text: string, userId: string) => {
+  const createIdea = async (
+    text: string,
+    userId: string,
+    tag: string | null = null,
+    priority: string | null = null,
+    folder_id: string | null = null,
+  ) => {
     const { data: idea, error } = await supabase
       .from('ideas')
-      .insert({ text, project_id: projectId, created_by: userId })
+      .insert({ text, project_id: projectId, created_by: userId, tag, priority, folder_id })
       .select()
       .single()
     if (error) throw error
@@ -63,11 +69,23 @@ export const useIdeas = (projectId: string) => {
     setIdeas(prev => prev.filter(i => i.id !== ideaId))
   }
 
-  const updateIdea = async (ideaId: string, text: string) => {
-    const { error } = await supabase.from('ideas').update({ text }).eq('id', ideaId)
+  const updateIdea = async (
+    ideaId: string,
+    data: { text: string; tag?: string | null; priority?: string | null; folder_id?: string | null },
+  ) => {
+    const { error } = await supabase.from('ideas').update(data).eq('id', ideaId)
     if (error) throw error
-    setIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, text } : i))
+    setIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, ...data } as Idea : i))
   }
 
-  return { ideas, loading, createIdea, deleteIdea, updateIdea }
+  const moveIdeas = async (ideaIds: string[], folder_id: string | null) => {
+    const { error } = await supabase
+      .from('ideas')
+      .update({ folder_id })
+      .in('id', ideaIds)
+    if (error) throw error
+    setIdeas(prev => prev.map(i => ideaIds.includes(i.id) ? { ...i, folder_id } : i))
+  }
+
+  return { ideas, loading, createIdea, deleteIdea, updateIdea, moveIdeas }
 }

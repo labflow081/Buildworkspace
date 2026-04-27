@@ -4,7 +4,7 @@ import { ActivityActionType } from '@/types'
 export const logActivity = async (params: {
   userId: string
   action_type: ActivityActionType
-  target_type: 'idea' | 'task' | 'project'
+  target_type: 'idea' | 'task' | 'project' | 'folder'
   target_id: string
   project_id?: string | null
   metadata?: Record<string, unknown>

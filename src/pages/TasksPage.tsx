@@ -2,30 +2,67 @@ import { useState, useEffect } from 'react'
 import { useTasks } from '@/hooks/useTasks'
 import { useProfiles } from '@/hooks/useProfiles'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
 import { NewTaskDialog } from '@/components/dialogs/NewTaskDialog'
 import { EditTaskDialog } from '@/components/dialogs/EditTaskDialog'
+import { CommentsDialog } from '@/components/dialogs/CommentsDialog'
+import { XpSelect } from '@/components/xp/XpSelect'
 import { useLongPress } from '@/hooks/useLongPress'
 import { logActivity } from '@/lib/logActivity'
+import { TAGS, PRIORITIES } from '@/constants/taxonomy'
 import { Task } from '@/types'
 import { playSound } from '@/lib/sounds'
 
+// ── Badge helpers ─────────────────────────────────────────────
+
+const PriorityBadge = ({ value }: { value: string }) => {
+  const p = PRIORITIES.find(p => p.value === value)
+  if (!p) return null
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, color: p.color, fontFamily: 'Tahoma' }}>
+      ● {p.label}
+    </span>
+  )
+}
+
+const TagBadge = ({ value }: { value: string }) => {
+  const t = TAGS.find(t => t.value === value)
+  if (!t) return null
+  return (
+    <span style={{
+      background: '#316AC5', color: 'white',
+      fontFamily: 'Tahoma', fontSize: 10, fontWeight: 700,
+      padding: '1px 6px', borderRadius: 2,
+    }}>
+      {t.label}
+    </span>
+  )
+}
+
+// ── TaskRow ───────────────────────────────────────────────────
+
 interface Props {
   projectId: string
+  projectName?: string
 }
 
 const TaskRow = ({
   task,
   assigneeName,
+  commentCount,
   onToggle,
   onDelete,
   onEdit,
+  onComment,
   highlighted,
 }: {
   task: Task
   assigneeName: string
+  commentCount: number
   onToggle: (id: string, done: boolean) => void
   onDelete: (id: string) => void
   onEdit: (task: Task) => void
+  onComment: (task: Task) => void
   highlighted: boolean
 }) => {
   const [animating, setAnimating] = useState(false)
@@ -99,7 +136,41 @@ const TaskRow = ({
             </span>
           )}
         </div>
+        {(task.priority || task.tag) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+            {task.priority && <PriorityBadge value={task.priority} />}
+            {task.tag && <TagBadge value={task.tag} />}
+          </div>
+        )}
       </div>
+
+      <button
+        onClick={() => onComment(task)}
+        onMouseDown={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+        title="Commenti"
+        style={{
+          height: 22, minWidth: 22, padding: '0 4px', borderRadius: 3,
+          border: '1px solid #ccc',
+          background: 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)',
+          cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2,
+          fontSize: 10, fontFamily: 'Tahoma',
+          color: commentCount > 0 ? '#2A5BA5' : '#999',
+          fontWeight: commentCount > 0 ? 600 : 400,
+          flexShrink: 0, marginTop: 1,
+        }}
+        onMouseOver={e => {
+          (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #D0E8FF 0%, #7BB8FF 100%)'
+          ;(e.currentTarget as HTMLElement).style.borderColor = '#2A5BA5'
+        }}
+        onMouseOut={e => {
+          (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, #FAFAFA 0%, #DCDCDC 100%)'
+          ;(e.currentTarget as HTMLElement).style.borderColor = '#ccc'
+        }}
+      >
+        💬{commentCount > 0 ? ` ${commentCount}` : ''}
+      </button>
 
       <button
         onClick={handleDelete}
@@ -132,22 +203,40 @@ const TaskRow = ({
   )
 }
 
-export const TasksPage = ({ projectId }: Props) => {
+// ── TasksPage ─────────────────────────────────────────────────
+
+export const TasksPage = ({ projectId, projectName }: Props) => {
   const { user } = useAuth()
   const { tasks, loading, createTask, toggleDone, deleteTask, updateTask } = useTasks(projectId)
   const { profiles } = useProfiles()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [commentingTask, setCommentingTask] = useState<Task | null>(null)
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
 
-  // Task appena promossa da un'idea (da sessionStorage)
+  // Filtri
+  const [filterTag, setFilterTag] = useState('')
+  const [filterPriority, setFilterPriority] = useState('')
+
   const [highlightId] = useState<string | null>(() => {
     const id = sessionStorage.getItem('promotedTaskId')
     if (id) sessionStorage.removeItem('promotedTaskId')
     return id
   })
 
-  const todo = tasks.filter(t => !t.done)
-  const done = tasks.filter(t => t.done)
+  useEffect(() => {
+    if (!projectId) return
+    supabase
+      .from('comments')
+      .select('target_id')
+      .eq('project_id', projectId)
+      .eq('target_type', 'task')
+      .then(({ data }) => {
+        const counts: Record<string, number> = {}
+        data?.forEach(r => { counts[r.target_id] = (counts[r.target_id] ?? 0) + 1 })
+        setCommentCounts(counts)
+      })
+  }, [projectId])
 
   const getName = (id: string | null) => {
     if (!id) return ''
@@ -155,7 +244,13 @@ export const TasksPage = ({ projectId }: Props) => {
     return p?.display_name ?? id.slice(0, 8)
   }
 
-  const handleCreate = async (data: { text: string; assignee: string | null; due_date: string | null }) => {
+  const handleCreate = async (data: {
+    text: string
+    assignee: string | null
+    due_date: string | null
+    tag: string | null
+    priority: string | null
+  }) => {
     if (!user) return
     const task = await createTask({ ...data, created_by: user.id })
     logActivity({
@@ -164,12 +259,16 @@ export const TasksPage = ({ projectId }: Props) => {
       target_type: 'task',
       target_id: task.id,
       project_id: projectId,
+      metadata: {
+        project_name: projectName ?? '',
+        ...(data.tag ? { tag: data.tag } : {}),
+        ...(data.priority ? { priority: data.priority } : {}),
+      },
     })
   }
 
   const handleToggle = async (taskId: string, done: boolean) => {
     await toggleDone(taskId, done)
-    // Logga solo quando si completa (da false a true)
     if (done && user) {
       logActivity({
         userId: user.id,
@@ -181,14 +280,45 @@ export const TasksPage = ({ projectId }: Props) => {
     }
   }
 
-  const handleSaveEdit = async (data: { text: string; assignee: string | null; due_date: string | null }) => {
-    if (!editingTask) return
+  const handleSaveEdit = async (data: {
+    text: string
+    assignee: string | null
+    due_date: string | null
+    tag: string | null
+    priority: string | null
+  }) => {
+    if (!editingTask || !user) return
+    const prevAssignee = editingTask.assignee
     await updateTask(editingTask.id, data)
+    if (data.assignee && data.assignee !== prevAssignee) {
+      logActivity({
+        userId: user.id,
+        action_type: 'assigned_task',
+        target_type: 'task',
+        target_id: editingTask.id,
+        project_id: projectId,
+        metadata: {
+          project_name: projectName ?? '',
+          ...(data.tag ? { tag: data.tag } : {}),
+          ...(data.priority ? { priority: data.priority } : {}),
+        },
+      })
+    }
   }
 
   if (loading) {
     return <div style={{ padding: 16, fontSize: 12, color: '#666' }}>Caricamento task...</div>
   }
+
+  const filteredTasks = tasks.filter(t => {
+    if (filterTag && t.tag !== filterTag) return false
+    if (filterPriority && t.priority !== filterPriority) return false
+    return true
+  })
+
+  const todo = filteredTasks.filter(t => !t.done)
+  const done = filteredTasks.filter(t => t.done)
+  const filtersActive = !!(filterTag || filterPriority)
 
   const SectionHeader = ({ label }: { label: string }) => (
     <div style={{
@@ -202,12 +332,62 @@ export const TasksPage = ({ projectId }: Props) => {
 
   return (
     <div className="flex flex-col h-full relative">
+      {/* Toolbar filtri */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 8px',
+        borderBottom: '1px solid #ACA899',
+        background: '#ECE9D8',
+        flexWrap: 'wrap',
+        flexShrink: 0,
+      }}>
+        <label style={{ fontSize: 11, color: '#1A1828', whiteSpace: 'nowrap' }}>Tag:</label>
+        <div style={{ minWidth: 100, flex: '1 1 100px' }}>
+          <XpSelect
+            options={TAGS}
+            emptyLabel="Tutti"
+            value={filterTag}
+            onChange={e => setFilterTag(e.target.value)}
+          />
+        </div>
+        <label style={{ fontSize: 11, color: '#1A1828', whiteSpace: 'nowrap' }}>Priorità:</label>
+        <div style={{ minWidth: 90, flex: '1 1 90px' }}>
+          <XpSelect
+            options={PRIORITIES}
+            emptyLabel="Tutte"
+            value={filterPriority}
+            onChange={e => setFilterPriority(e.target.value)}
+          />
+        </div>
+        {filtersActive && (
+          <button
+            className="xp-button"
+            onClick={() => { setFilterTag(''); setFilterPriority('') }}
+            style={{ whiteSpace: 'nowrap', padding: '3px 10px', minHeight: 24, minWidth: 0 }}
+          >
+            Reset
+          </button>
+        )}
+      </div>
+
       <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 64 }}>
         {todo.length > 0 && (
           <div>
             <SectionHeader label={`Da fare (${todo.length})`} />
             {todo.map(t => (
-              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={handleToggle} onDelete={deleteTask} onEdit={setEditingTask} highlighted={highlightId === t.id} />
+              <TaskRow
+                key={t.id}
+                task={t}
+                assigneeName={getName(t.assignee)}
+                commentCount={commentCounts[t.id] ?? 0}
+                onToggle={handleToggle}
+                onDelete={deleteTask}
+                onEdit={setEditingTask}
+                onComment={setCommentingTask}
+                highlighted={highlightId === t.id}
+              />
             ))}
           </div>
         )}
@@ -215,13 +395,28 @@ export const TasksPage = ({ projectId }: Props) => {
           <div>
             <SectionHeader label={`Fatte (${done.length})`} />
             {done.map(t => (
-              <TaskRow key={t.id} task={t} assigneeName={getName(t.assignee)} onToggle={handleToggle} onDelete={deleteTask} onEdit={setEditingTask} highlighted={highlightId === t.id} />
+              <TaskRow
+                key={t.id}
+                task={t}
+                assigneeName={getName(t.assignee)}
+                commentCount={commentCounts[t.id] ?? 0}
+                onToggle={handleToggle}
+                onDelete={deleteTask}
+                onEdit={setEditingTask}
+                onComment={setCommentingTask}
+                highlighted={highlightId === t.id}
+              />
             ))}
           </div>
         )}
         {tasks.length === 0 && (
           <div style={{ padding: 24, textAlign: 'center', color: '#999', fontSize: 12 }}>
             Nessuna task. Aggiungine una!
+          </div>
+        )}
+        {tasks.length > 0 && filteredTasks.length === 0 && (
+          <div style={{ padding: 24, textAlign: 'center', color: '#999', fontSize: 12 }}>
+            Nessuna task corrisponde ai filtri.
           </div>
         )}
       </div>
@@ -254,6 +449,23 @@ export const TasksPage = ({ projectId }: Props) => {
         task={editingTask}
         profiles={profiles}
         onSave={handleSaveEdit}
+      />
+
+      <CommentsDialog
+        open={commentingTask !== null}
+        onClose={(finalCount) => {
+          if (commentingTask) {
+            setCommentCounts(prev => ({ ...prev, [commentingTask.id]: finalCount }))
+          }
+          setCommentingTask(null)
+        }}
+        targetType="task"
+        targetId={commentingTask?.id ?? ''}
+        targetText={commentingTask?.text ?? ''}
+        projectId={projectId}
+        projectName={projectName}
+        currentUserId={user?.id ?? null}
+        profiles={profiles}
       />
     </div>
   )

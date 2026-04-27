@@ -13,12 +13,13 @@ interface Props {
   idea: Idea | null
   profiles: Profile[]
   currentUserId: string | null
+  projectName?: string
   onDeleteIdea: (id: string) => Promise<void>
   onSuccess: () => void
 }
 
 export const PromoteToTaskDialog = ({
-  open, onClose, idea, profiles, currentUserId, onDeleteIdea, onSuccess,
+  open, onClose, idea, profiles, currentUserId, projectName, onDeleteIdea, onSuccess,
 }: Props) => {
   const [text, setText] = useState('')
   const [assignee, setAssignee] = useState('')
@@ -67,7 +68,7 @@ export const PromoteToTaskDialog = ({
         target_type: 'task',
         target_id: newTask.id,
         project_id: idea.project_id,
-        metadata: { original_idea_text: idea.text, new_task_text: trimmed },
+        metadata: { original_idea_text: idea.text, new_task_text: trimmed, project_name: projectName ?? '' },
       })
 
       sessionStorage.setItem('promotedTaskId', newTask.id)
